@@ -8,6 +8,7 @@ use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Razorpay\Api\Api;
+use Illuminate\Support\Facades\Log;
 
 class CheckoutController extends Controller
 {
@@ -73,39 +74,54 @@ public function showCheckout()
 
 public function initiateCheckout(Request $request)
 {
-    $user = Auth::user();
-    $cartItems = CartItem::where('user_id', $user->id)->get();
+    try {
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json(['error' => 'User not authenticated'], 401);
+        }
 
-    if ($cartItems->isEmpty()) {
-        return response()->json(['error' => 'Your cart is empty.'], 400);
+        $cartItems = CartItem::where('user_id', $user->id)->get();
+        if ($cartItems->isEmpty()) {
+            return response()->json(['error' => 'Your cart is empty.'], 400);
+        }
+
+        $totalPrice = $cartItems->sum(function ($item) {
+            return $item->menuItem->price * $item->quantity;
+        });
+
+        // Log the total price for debugging
+        \Log::info("Total price: $totalPrice");
+
+        // Create a Razorpay order
+        $api = new Api(env('RAZORPAY_KEY'), env('RAZORPAY_SECRET'));
+        $razorpayOrder = $api->order->create([
+            'amount' => $totalPrice * 100,
+            'currency' => 'INR',
+            'payment_capture' => 1,
+        ]);
+
+        // Log the Razorpay order for debugging
+        \Log::info("Razorpay Order: " . json_encode($razorpayOrder));
+
+        // Create a new order in the database
+        $order = Order::create([
+            'user_id' => $user->id,
+            'total_price' => $totalPrice,
+            'status' => 'pending',
+            'razorpay_order_id' => $razorpayOrder->id,
+        ]);
+
+        return response()->json([
+            'razorpay_order_id' => $razorpayOrder->id,
+            'razorpay_amount' => $totalPrice * 100,
+            'razorpay_currency' => 'INR',
+        ]);
+    } catch (\Exception $e) {
+        \Log::error("Error in initiateCheckout: " . $e->getMessage());
+        return response()->json(['error' => 'Server error. Please try again later.'], 500);
     }
-
-    $totalPrice = $cartItems->sum(function ($item) {
-        return $item->menuItem->price * $item->quantity;
-    });
-
-    // Create a Razorpay order
-    $api = new Api(env('RAZORPAY_KEY'), env('RAZORPAY_SECRET'));
-    $razorpayOrder = $api->order->create([
-        'amount' => $totalPrice * 100,
-        'currency' => 'INR',
-        'payment_capture' => 1,
-    ]);
-
-    // Create a new order in the database
-    $order = Order::create([
-        'user_id' => $user->id,
-        'total_price' => $totalPrice,
-        'status' => 'pending',
-        'razorpay_order_id' => $razorpayOrder->id,
-    ]);
-
-    return response()->json([
-        'razorpay_order_id' => $razorpayOrder->id,
-        'razorpay_amount' => $totalPrice * 100,
-        'razorpay_currency' => 'INR',
-    ]);
 }
+
 
     /**
      * Verify the payment after user has completed the transaction.
@@ -114,38 +130,41 @@ public function initiateCheckout(Request $request)
      * @return \Illuminate\Http\Response
      */
     public function verifyPayment(Request $request)
-{
-    $user = Auth::user();
-    $razorpayOrderId = $request->razorpay_order_id;
-    $razorpayPaymentId = $request->razorpay_payment_id;
-    $razorpaySignature = $request->razorpay_signature;
-
-    $order = Order::where('razorpay_order_id', $razorpayOrderId)->where('user_id', $user->id)->first();
-
-    if (!$order) {
-        return response()->json(['error' => 'Order not found.'], 404);
+    {
+        $razorpayOrderId = $request->input('razorpay_order_id');
+        $razorpayPaymentId = $request->input('razorpay_payment_id');
+        $razorpaySignature = $request->input('razorpay_signature');
+    
+        try {
+            $api = new Api(env('RAZORPAY_KEY'), env('RAZORPAY_SECRET'));
+    
+            // Create the expected signature
+            $generatedSignature = hash_hmac(
+                'sha256',
+                $razorpayOrderId . '|' . $razorpayPaymentId,
+                env('RAZORPAY_SECRET')
+            );
+    
+            // Verify the signature
+            if ($generatedSignature !== $razorpaySignature) {
+                Log::error("Signature verification failed");
+                return response()->json(['error' => 'Payment verification failed'], 400);
+            }
+    
+            // Update the order status in the database
+            $order = Order::where('razorpay_order_id', $razorpayOrderId)->first();
+    
+            if ($order) {
+                $order->status = 'completed';
+                $order->razorpay_payment_id = $razorpayPaymentId;
+                $order->razorpay_signature = $razorpaySignature;
+                $order->save();
+            }
+    
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            Log::error("Error in verifyPayment: " . $e->getMessage());
+            return response()->json(['error' => 'Payment verification failed'], 500);
+        }
     }
-
-    try {
-        $api = new Api(env('RAZORPAY_KEY'), env('RAZORPAY_SECRET'));
-        $attributes = [
-            'razorpay_order_id' => $razorpayOrderId,
-            'razorpay_payment_id' => $razorpayPaymentId,
-            'razorpay_signature' => $razorpaySignature,
-        ];
-
-        $api->utility->verifyPaymentSignature($attributes);
-
-        // Update order details
-        $order->status = 'completed';
-        $order->razorpay_payment_id = $razorpayPaymentId;
-        $order->save();
-
-        CartItem::where('user_id', $user->id)->delete();
-
-        return response()->json(['message' => 'Payment verified successfully.']);
-    } catch (\Exception $e) {
-        return response()->json(['error' => 'Payment verification failed.'], 400);
-    }
-}
 }

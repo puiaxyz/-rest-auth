@@ -36,7 +36,11 @@
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script>
     document.getElementById('proceedToPayment').onclick = function() {
-        axios.post('/api/checkout')
+        axios.post('/api/checkout', {}, {
+    headers: {
+        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+    }
+})
             .then(response => {
                 const orderData = response.data;
 

@@ -20,6 +20,8 @@ Route::middleware(['web', 'auth'])->group(function () {
 
 
 use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\CheckoutController;
+
 
 Route::middleware(['web', 'auth'])->group(function () {
     // Create a new order
@@ -31,9 +33,12 @@ Route::middleware(['web', 'auth'])->group(function () {
     // Update the status of an order (e.g., after payment or manual update)
     // Update the status of an order
 Route::patch('/orders/{orderId}', [OrderController::class, 'updateOrderStatus'])->name('orders.update');
-Route::post('/checkout', [CheckoutController::class, 'initiateCheckout'])->name('checkout.initiate');
+
+
+// Initiate Razorpay checkout
+Route::middleware(['auth'])->post('/checkout', [CheckoutController::class, 'initiateCheckout'])->name('checkout.initiate');
+
+// Verify Razorpay payment (move outside 'web' middleware)
 Route::post('/checkout/verify', [CheckoutController::class, 'verifyPayment'])->name('checkout.verify');
 
 });
-use App\Http\Controllers\Api\CheckoutController;
-
