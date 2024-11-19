@@ -31,15 +31,39 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ route('contact') }}">Contact</a>
                     </li>
+
                     @auth
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ route('cart') }}">Cart</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ route('orders') }}">Orders</a>
-                        </li>
+                        @if (Auth::user()->role === 'customer')
+                            <!-- Customer-specific links -->
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ route('cart') }}">Cart</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ route('orders') }}">Orders</a>
+                            </li>
+                        @elseif (Auth::user()->role === 'staff')
+                            <!-- Staff-specific links -->
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ route('staff.dashboard') }}">Staff Dashboard</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ route('staff.orders') }}">Manage Orders</a>
+                            </li>
+                        @elseif (Auth::user()->role === 'admin')
+                            <!-- Admin-specific links -->
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ route('admin.dashboard') }}">Admin Dashboard</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ route('admin.userManagement') }}">User Management</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="{{ route('admin.analytics') }}">Analytics</a>
+                            </li>
+                        @endif
                     @endauth
                 </ul>
+
                 <ul class="navbar-nav ms-auto">
                     @guest
                         <li class="nav-item">

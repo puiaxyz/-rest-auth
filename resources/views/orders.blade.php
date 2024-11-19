@@ -23,17 +23,6 @@
                     <td>${{ number_format($order->total_price, 2) }}</td>
                     <td>
                         <a href="{{ route('orders.show', $order->id) }}" class="btn btn-info">View Details</a>
-                        @if ($order->status === 'pending')
-                            <form action="{{ route('orders.update', $order->id) }}" method="POST" style="display:inline;">
-                                @csrf
-                                @method('PATCH')
-                                <select name="status" onchange="this.form.submit()">
-                                    <option value="pending" {{ $order->status === 'pending' ? 'selected' : '' }}>Pending</option>
-                                    <option value="completed" {{ $order->status === 'completed' ? 'selected' : '' }}>Completed</option>
-                                    <option value="canceled" {{ $order->status === 'canceled' ? 'selected' : '' }}>Canceled</option>
-                                </select>
-                            </form>
-                        @endif
                     </td>
                 </tr>
             @endforeach
